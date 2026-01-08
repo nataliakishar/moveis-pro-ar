@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0e0f13">
+<title>Móveis Pro • WebAR</title>
+<meta name="description" content="Catálogo de móveis com AR — ver no seu espaço, carrinho/checkout, favoritos e créditos.">
+<link rel="icon" href="data:;base64,iVBORw0KGgo=" />
+
+<!-- AR no dispositivo (preview 3D nos cards + AR nativo) -->
+<script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+<!-- AR por marcador (A-Frame + AR.js) -->
+<script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ar.js@3.4.7/aframe/build/aframe-ar.js"></script>
+
+<style>
+  /* ===== Tema leve + responsivo (QA friendly) ===== */
+  :root{
+    --bg:#0e0f13; --bg-2:#131528; --paper:#151834;
+    --text:#eef2f7; --muted:#a6b1c9;
+    --brand:#7b6cf6; --brand-2:#e6c48f;
+    --radius:14px; --shadow:0 10px 24px rgba(0,0,0,.28);
+    --border:1px solid rgba(255,255,255,.08);
+    --ok:#10b981; --warn:#f59e0b; --err:#ef4444;
+    --focus: 0 0 0 3px rgba(123,108,246,.35);
+    --btn-h:38px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  a{color:#9dc0ff;text-decoration:none}
+  :focus-visible{outline:none; box-shadow:var(--focus)}
+  .container{width:min(1180px,92vw);margin:0 auto}
+  @media (prefers-reduced-motion: reduce){*{animation:none !important; transition:none !important}}
+
+  /* ===== Navbar ===== */
+  .nav{position:sticky;top:0;z-index:80;background:rgba(19,21,40,.5);backdrop-filter:blur(10px);border-bottom:var(--border)}
+  .nav .inner{display:flex;align-items:center;justify-content:space-between;padding:.6rem .8rem;gap:.5rem}
+  .brand{font-weight:800;letter-spacing:.2px}
+  .brand b{color:var(--brand)}
+  .actions{display:flex;gap:.4rem;flex-wrap:wrap}
+  .btn{height:var(--btn-h);padding:.35rem .6rem;border-radius:10px;border:var(--border);background:#1a1f3a;color:var(--text);cursor:pointer;font-size:.9rem;line-height:1;display:inline-flex;align-items:center;gap:.4rem}
+  .btn.sm{height:34px;padding:.25rem .5rem;font-size:.85rem}
+  .btn.brand{background:var(--brand);border-color:var(--brand);color:#0e0f13;font-weight:700}
+  .btn.ghost{background:transparent}
+  .badge{min-width:20px;height:20px;border-radius:999px;background:#22263f;border:1px solid rgba(255,255,255,.12);display:inline-grid;place-items:center;font-size:.72rem}
+
+  /* ===== Hero ===== */
+  .hero{position:relative;padding:2.2rem 0 1rem}
+  .hero .bg{position:absolute;inset:-15% -10% auto -10%;height:60%;
+    background:radial-gradient(900px 300px at 25% -10%, rgba(123,108,246,.16), transparent),
+               radial-gradient(900px 300px at 80% 0%, rgba(230,196,143,.12), transparent);
+    filter:blur(38px);pointer-events:none}
+  .tag{font-size:.78rem;background:rgba(255,255,255,.08);padding:.18rem .55rem;border-radius:999px}
+  .hero h1{margin:.35rem 0 0;font-size:clamp(1.6rem,4vw,2.6rem);line-height:1.14}
+  .muted{color:var(--muted)}
+
+  /* ===== Catálogo ===== */
+  .section{padding:1.1rem 0}
+  .filters{display:flex;gap:.5rem;flex-wrap:wrap;margin:1rem 0}
+  input,select{background:#111430;border:var(--border);color:var(--text);padding:.5rem .6rem;border-radius:10px;font-size:.95rem}
+  input::placeholder{color:#8591ad}
+
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:.8rem}
+  .card{grid-column:span 4;background:var(--paper);border:var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+  @media (max-width:1024px){.card{grid-column:span 6}}
+  @media (max-width:640px){ .grid{gap:.7rem} .card{grid-column:span 12} }
+
+  /* Media robusta (sem depender só de aspect-ratio) */
+  .media{position:relative;background:#0d1127}
+  .media::before{content:"";display:block;padding-top:62.5%} /* 16:10 */
+  .media model-viewer{position:absolute;inset:0;width:100%;height:100%;background:#000;border:0;touch-action:pan-y pinch-zoom}
+  .cta-ar{position:absolute;left:12px;bottom:12px;display:inline-flex;align-items:center;gap:.45rem;background:rgba(11,13,18,.85);color:#fff;padding:.45rem .7rem;border-radius:999px;border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.88rem}
+  .cube-ico{width:18px;height:18px;display:inline-block}
+  .body{padding:.8rem;display:grid;gap:.45rem}
+  .row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+  .row.actions{justify-content:space-between}
+  .pill{font-size:.8rem;background:rgba(255,255,255,.08);padding:.18rem .5rem;border-radius:999px}
+
+  /* Controles padrão e-commerce */
+  .fav-btn{height:var(--btn-h);padding:.35rem .65rem;border-radius:10px;border:var(--border);background:#1a1f3a;color:#fff;display:inline-flex;align-items:center;gap:.4rem;cursor:pointer}
+  .fav-btn .heart{width:18px;height:18px}
+  .fav-btn.active{background:#29141a;border-color:#6d2b3a}
+  .fav-btn.active svg path{fill:#ff4d6d;stroke:#ff4d6d}
+  .add-btn{height:var(--btn-h);padding:.35rem .7rem;border-radius:10px;border:var(--border);background:#1a1f3a;color:#fff;display:inline-flex;align-items:center;gap:.45rem;cursor:pointer}
+  .add-btn .cart{width:18px;height:18px}
+
+  /* ===== Overlays (90vh em mobile, safe-area) ===== */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;place-items:center;z-index:100}
+  .sheet{width:min(1060px,96vw);height:min(86vh,860px);background:var(--bg-2);border:var(--border);border-radius:16px;overflow:hidden;display:grid;grid-template-rows:auto 1fr auto}
+  @media (max-width:640px){ .sheet{height:calc(90vh - env(safe-area-inset-bottom))} }
+  .toolbar{display:flex;gap:.5rem;align-items:center;justify-content:space-between;padding:.55rem .65rem;border-bottom:var(--border)}
+  .controls{display:flex;gap:.5rem;align-items:center;padding:.55rem .65rem;border-top:var(--border)}
+  .ok{background:rgba(16,185,129,.18)} .warn{background:rgba(251,191,36,.18)}
+  .mv{width:100%;height:100%;background:#000}
+
+  /* Detalhes (FAQ/accordion) */
+  .details-body{display:grid;grid-template-columns:1.15fr 1fr;gap:.9rem;padding:.8rem}
+  .details-left{background:#000;border-radius:12px;overflow:hidden;border:var(--border)}
+  .details-right{display:grid;gap:.6rem;align-content:start}
+  .faq{display:grid;gap:.6rem}
+  .faq .item{background:var(--paper);border:var(--border);border-radius:12px;overflow:hidden}
+  .faq .head{display:flex;align-items:center;justify-content:space-between;width:100%;background:transparent;color:var(--text);border:0;padding:.8rem 1rem;text-align:left;cursor:pointer;font-weight:600}
+  .faq .chev{transition:transform .25s ease}
+  .faq .item.open .chev{transform:rotate(180deg)}
+  .faq .panel{max-height:0;overflow:hidden;transition:max-height .28s ease, padding .28s ease;padding:0 1rem;color:var(--muted);line-height:1.55}
+  .faq .item.open .panel{padding:.25rem 1rem 1rem 1rem}
+  @media (max-width:640px){ .details-body{grid-template-columns:1fr} }
+
+  /* Listas (favoritos/carrinho) */
+  .list{padding:.8rem;display:grid;gap:.65rem;overflow:auto}
+  .row-item{display:grid;grid-template-columns:1fr auto;gap:.5rem;background:var(--paper);border:var(--border);border-radius:12px;padding:.6rem}
+  .qty{display:flex;gap:.35rem;align-items:center}
+  .qty button{width:30px;height:30px;border-radius:8px;border:var(--border);background:#1a1f3a;color:#fff;cursor:pointer}
+
+  /* Créditos */
+  .credits{padding:.8rem;display:grid;gap:.45rem;overflow:auto}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:.92rem}
+
+  footer{padding:1.4rem 0;color:var(--muted);border-top:var(--border);text-align:center}
+</style>
+</head>
+<body>
+  <!-- NAV -->
+  <div class="nav" role="navigation">
+    <div class="inner container">
+      <div class="brand" aria-label="Marca"><b>Móveis</b> Pro — AR</div>
+      <div class="actions">
+        <a class="btn sm brand" href="#catalogo">Catálogo</a>
+        <button class="btn sm" id="openFavs" aria-label="Abrir favoritos">Favoritos <span id="favCount" class="badge">0</span></button>
+        <button class="btn sm" id="openCart" aria-label="Abrir carrinho">Carrinho <span id="cartCount" class="badge">0</span></button>
+        <button class="btn sm" id="openCredits" aria-label="Abrir créditos">Créditos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="bg"></div>
+    <div class="container">
+      <span class="tag">Minimal Pro • WebAR</span>
+      <h1>Veja os móveis no seu espaço com <span style="color:var(--brand)">Realidade Aumentada</span>.</h1>
+      <p class="muted">HTTPS e permissão de câmera são necessários. Android abre Scene Viewer; iOS tenta Quick Look (recomendado USDZ).</p>
+    </div>
+  </header>
+
+  <!-- CATÁLOGO -->
+  <section class="section container" id="catalogo" aria-label="Catálogo">
+    <h2 style="margin:0 0 .25rem">Catálogo</h2>
+    <p class="muted" style="margin:.25rem 0 1rem">Pré-visualização 3D no card. Toque em <b>veja no seu espaço</b> para abrir o AR no celular.</p>
+    <div class="filters">
+      <input id="q" placeholder="Buscar por nome/sku…" aria-label="Busca"/>
+      <select id="categoria" aria-label="Categoria">
+        <option value="">Todas categorias</option><option>Cadeiras</option><option>Estações</option><option>Armários</option>
+      </select>
+      <select id="cor" aria-label="Cor">
+        <option value="">Todas cores</option><option>Preto</option><option>Vermelho</option><option>Branco</option><option>Cinza</option><option>Azul</option><option>Grafite</option>
+      </select>
+      <select id="material" aria-label="Material">
+        <option value="">Todos materiais</option><option>Nylon</option><option>Tecido</option><option>MDP</option><option>Aço</option>
+      </select>
+    </div>
+    <main id="cards" class="grid" aria-live="polite"></main>
+  </section>
+
+  <!-- OVERLAY: AR DISPOSITIVO -->
+  <div class="overlay" id="mvOverlay" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-labelledby="mvTitle">
+      <div class="toolbar">
+        <strong id="mvTitle">AR (Dispositivo)</strong>
+        <button class="btn sm ghost" id="closeMV" aria-label="Fechar">Fechar</button>
+      </div>
+      <model-viewer id="mv" class="mv" src="" alt="Visualizador 3D"
+        ar ar-modes="scene-viewer quick-look webxr" ar-placement="floor"
+        camera-controls auto-rotate shadow-intensity="1"></model-viewer>
+      <div class="controls">
+        <div class="badge" id="iosHint" style="display:none">iOS: Quick Look requer .usdz; sem USDZ, fica no visualizador 3D.</div>
+        <div style="margin-left:auto;display:flex;gap:.5rem">
+          <button class="btn sm" id="mvAR">Abrir AR do dispositivo</button>
+          <button class="btn sm ghost" id="mvReset">Resetar câmera</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OVERLAY: DETALHES (FAQ) -->
+  <div class="overlay" id="detailsOverlay" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-labelledby="detTitle">
+      <div class="toolbar">
+        <strong id="detTitle">Detalhes</strong>
+        <div style="display:flex;gap:.4rem">
+          <button class="btn sm" id="detMarkerBtn" title="Abrir AR por marcador">AR (Marcador)</button>
+          <button class="btn sm ghost" id="closeDet" aria-label="Fechar">Fechar</button>
+        </div>
+      </div>
+      <div class="details-body">
+        <div class="details-left">
+          <model-viewer id="detMV" src="" alt="Visualização do produto" camera-controls auto-rotate shadow-intensity="1" style="width:100%;height:100%"></model-viewer>
+        </div>
+        <div class="details-right">
+          <div id="detFaq" class="faq" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="controls">
+        <button class="btn sm" id="detAR">🧊 ver no seu espaço</button>
+        <a class="btn sm ghost" id="detSketch" target="_blank" rel="noopener noreferrer">Abrir no Sketchfab</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- OVERLAY: AR POR MARCADOR (Hiro/custom) + SNAPSHOT -->
+  <div class="overlay" id="arOverlay" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-labelledby="arTitle">
+      <div class="toolbar" style="gap:.6rem">
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <strong id="arTitle">AR (Marcador)</strong>
+          <span id="arStatus" class="badge warn" aria-live="polite">Detectando…</span>
+          <label class="muted" for="markerSelect">Marcador:</label>
+          <select id="markerSelect" aria-label="Tipo de marcador">
+            <option value="hiro">Hiro (padrão)</option>
+            <option value="custom">Custom (.patt)</option>
+          </select>
+          <input id="pattFile" type="file" accept=".patt" style="display:none" />
+          <button class="btn sm" id="choosePatt" style="display:none">Escolher .patt</button>
+          <button class="btn sm" id="snapshotBtn" title="Salvar foto do seu ambiente com o móvel">📸 Snapshot</button>
+        </div>
+        <button class="btn sm ghost" id="closeAR" aria-label="Fechar">Fechar</button>
+      </div>
+      <div class="content" id="arMount" style="background:#000"></div>
+      <div class="controls">
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+          <button class="btn sm" id="rotL" title="Rotacionar -10°" aria-label="Rotacionar para a esquerda">↶</button>
+          <button class="btn sm" id="rotR" title="Rotacionar +10°" aria-label="Rotacionar para a direita">↷</button>
+          <button class="btn sm" id="scaleMinus" title="Diminuir escala" aria-label="Diminuir escala">−</button>
+          <button class="btn sm" id="scalePlus" title="Aumentar escala" aria-label="Aumentar escala">＋</button>
+        </div>
+        <small class="muted" style="margin-left:auto">Precisa do <a href="https://raw.githubusercontent.com/AR-js-org/AR.js/master/three.js/data/images/HIRO.jpg" target="_blank" rel="noreferrer">marcador Hiro</a>? Baixe e imprima.</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- OVERLAY: FAVORITOS -->
+  <div class="overlay" id="favOverlay" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-labelledby="favTitle">
+      <div class="toolbar">
+        <strong id="favTitle">Meus favoritos</strong>
+        <button class="btn sm ghost" id="closeFavs" aria-label="Fechar">Fechar</button>
+      </div>
+      <div class="list" id="favList"></div>
+      <div class="controls">
+        <small class="muted">Itens salvos localmente neste dispositivo.</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- OVERLAY: CARRINHO + CHECKOUT -->
+  <div class="overlay" id="cartOverlay" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-labelledby="cartTitle">
+      <div class="toolbar">
+        <strong id="cartTitle">Carrinho & Checkout</strong>
+        <button class="btn sm ghost" id="closeCart" aria-label="Fechar">Fechar</button>
+      </div>
+      <div class="list" id="cartList" style="padding-bottom:.25rem"></div>
+      <div class="controls" id="cartFooter" style="justify-content:space-between">
+        <div>
+          <strong>Total: <span id="cartTotal">R$ 0,00</span></strong>
+          <small class="muted" id="cartCountText"></small>
+        </div>
+        <div>
+          <button class="btn sm" id="checkoutBtn">Ir para checkout</button>
+        </div>
+      </div>
+
+      <form id="checkoutForm" style="display:none;padding:.8rem;gap:.6rem" class="list" aria-label="Formulário de checkout">
+        <div class="row" style="gap:.6rem;flex-wrap:wrap">
+          <input name="nome" placeholder="Nome completo" aria-label="Nome completo" required>
+          <input name="email" type="email" placeholder="Email" aria-label="Email" required>
+          <input name="endereco" placeholder="Endereço" aria-label="Endereço" required style="flex:1 1 100%">
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <small class="muted">Pagamento simulado — sem cobrança real.</small>
+          <button class="btn sm brand" type="submit">Pagar (Simulado)</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- OVERLAY: CRÉDITOS + LEIA-ME -->
+  <div class="overlay" id="creditsOverlay" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-labelledby="credTitle">
+      <div class="toolbar">
+        <strong id="credTitle">Créditos & Licenças</strong>
+        <button class="btn sm ghost" id="closeCredits" aria-label="Fechar">Fechar</button>
+      </div>
+      <div class="credits" id="creditsBody"></div>
+      <div class="controls" style="justify-content:space-between">
+        <small class="muted">Projeto educacional (demo). Respeite as licenças de cada item no Sketchfab.</small>
+        <button class="btn sm" id="downloadReadme">Baixar LEIA-ME.txt</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>© <span id="year"></span> Móveis Pro — Demo educacional • Natália Ramos</footer>
+
+<script>
+/* ===========================
+   DADOS DO CATÁLOGO
+=========================== */
+const CATALOG = [
+  {id:"yon-sl-nylon", nome:"Cadeira Yon 47301 Syn SL (Nylon)", sku:"YON-47301-SL-NY", preco:1299.90, categoria:"Cadeiras", material:"Nylon", cor:"Preto", urlGLB:"models/yon-47301-_syn-sl-_nylon_1.glb", urlSketchfab:"https://sketchfab.com/3d-models/yon-47301-syn-sl-nylon-1-27a55ee3dab2476fae2afdff9c2494f8"},
+  {id:"yon-mc-up-vermelho", nome:"Cadeira Yon 47301 Syn MC-UP (Vermelho)", sku:"YON-47301-MCUP-VM", preco:1349.90, categoria:"Cadeiras", material:"Tecido", cor:"Vermelho", urlGLB:"models/yon-47301-_syn-mc-up-_vermelho_1.glb", urlSketchfab:"https://sketchfab.com/3d-models/yon-47301-syn-mc-up-vermelho-1-d06f371bcc794a0ea56e6643f069171e"},
+  {id:"yon-ac-syn-mc-nylon", nome:"Cadeira Yon 47301 AC SYN MC (Nylon)", sku:"YON-47301-AC-NY", preco:1399.90, categoria:"Cadeiras", material:"Nylon", cor:"Preto", urlGLB:"models/yon-47301-ac-syn-mc-nylon_1.glb", urlSketchfab:"https://sketchfab.com/3d-models/yon-47301-ac-syn-mc-nylon-1-7ed5a78b7f6f4b248cd4f45c79054162"},
+  {id:"refresh-02", nome:"Estação Refresh 02", sku:"REF-02-EST", preco:3999.00, categoria:"Estações", material:"MDP", cor:"Cinza", urlGLB:"models/refresh_02_1.glb", urlSketchfab:"https://sketchfab.com/3d-models/refresh-02-1-c76d3d5b558041c48f42f604b7d629e8"},
+  {id:"process-02", nome:"Estação Process 02", sku:"PRO-02-EST", preco:4299.00, categoria:"Estações", material:"MDP", cor:"Branco", urlGLB:"models/process_02_1.glb", urlSketchfab:"https://sketchfab.com/3d-models/process-02-1-5bc1c12ae31b4312b16df4060d76337f"},
+  {id:"mais-37001", nome:"Cadeira Mais 37001 (Nylon)", sku:"MAIS-37001-NY", preco:1199.90, categoria:"Cadeiras", material:"Nylon", cor:"Preto", urlGLB:"models/mais-37001-_nylon_1_1.glb", urlSketchfab:"https://sketchfab.com/3d-models/mais-37001-nylon-1-1-1423dcf3fe8e4d25a57010be3c0ef421"},
+  {id:"cadeira1-embedded", nome:"Cadeira (Embedded)", sku:"CAD-EMB-01", preco:899.00, categoria:"Cadeiras", material:"Tecido", cor:"Azul", urlGLB:"models/cadeira1_embedded.glb", urlSketchfab:"https://sketchfab.com/3d-models/cadeira1-embedded-8889c881b04d4dae9a3e8adacd07dfae"},
+  {id:"box-36105", nome:"Armário Box 36105-3L", sku:"BOX-36105-3L", preco:2199.00, categoria:"Armários", material:"Aço", cor:"Grafite", urlGLB:"models/box-36105-3l_1.glb", urlSketchfab:"https://sketchfab.com/3d-models/box-36105-3l-1-88ca4d2fb9d64da8be498589b8691d11"},
+  {id:"match-46963", nome:"Cadeira Match 46963", sku:"MAT-46963-01", preco:1499.00, categoria:"Cadeiras", material:"Tecido", cor:"Preto", urlGLB:"models/match-46963_1.glb", urlSketchfab:""}
+];
+
+const DETAILS = {
+  "yon-sl-nylon":[
+    {t:"Braços", d:"Braços reguláveis SL, SL New PP (vide imagem), SL New PU (todos com opção de regulagem lateral), 3D e MC. Braço fixo TC."},
+    {t:"Assento", d:"Espuma alta performance expandida/laminada. Regulagem de altura à gás. Revestimentos: CEC-Stilo, Grid, Mescla, Poliéster, Politex, Space ou Vinil."},
+    {t:"Mecanismos", d:"Syncron de 4 estágios com regulagem de tensão por manípulo frontal ou SRY (inclinação do encosto em diversas posições)."},
+    {t:"Bases", d:"Aço com Capa/Estampada (rodízios 50mm Nylon/PU – preto/cinza), Alumínio ou Nylon (rodízios 65mm Nylon/PU – preto), Bases Up (65mm – Azul Profundo/Vermelho Aurora)."},
+    {t:"Tela", d:"Tela que se adapta à curvatura da coluna, com ventilação (Vélo, Flip, NewNet)."},
+    {t:"Revestimentos", d:"Telas, assento e apoio de cabeça customizáveis."}
+  ],
+  "refresh-02":[
+    {t:"Módulos", d:"Configuração para 1–4 postos; divisórias opcionais."},
+    {t:"Tampo", d:"MDP/MDF acabamentos madeirados/unicolores; bordas de alta resistência."},
+    {t:"Gestão de cabos", d:"Calha central com tampa/passa-fios; torre/caixa opcional."},
+    {t:"Estrutura", d:"Metálica com travessas e niveladores de piso."}
+  ],
+  "process-02":[
+    {t:"Conceito", d:"Estações colaborativas com opções de privacidade e acessórios."},
+    {t:"Materiais", d:"Tampo MDP e estrutura metálica."}
+  ],
+  "mais-37001":[
+    {t:"Ergonomia", d:"Espuma de alta densidade e regulagem de altura à gás."},
+    {t:"Bases", d:"Nylon ou alumínio; rodízios Nylon/PU."}
+  ],
+  "cadeira1-embedded":[
+    {t:"Estrutura", d:"Cadeira de tecido com encosto fixo (uso demonstrativo)."},
+    {t:"Acabamentos", d:"Cores/tecidos personalizáveis conforme disponibilidade."}
+  ],
+  "box-36105":[
+    {t:"Armazenamento", d:"Armário 3 portas com prateleiras internas."},
+    {t:"Material", d:"Aço com pintura eletrostática (grafite)."}
+  ],
+  "yon-mc-up-vermelho":[
+    {t:"Braços/Encosto", d:"Variação MC-UP com apoios ajustáveis e encosto em tela ventilada."},
+    {t:"Cores", d:"Assento vermelho; demais cores sob consulta."}
+  ],
+  "yon-ac-syn-mc-nylon":[
+    {t:"Configuração", d:"Braço AC + mecanismo SYN MC; acabamento em Nylon."},
+    {t:"Ajustes", d:"Inclinação de encosto e regulagem de tensão."}
+  ],
+  "match-46963":[
+    {t:"Design", d:"Cadeira giratória com regulagem básica e opções de tecidos."}
+  ]
+};
+
+/* ===========================
+   HELPERS & ESTADO
+=========================== */
+const qs = s => document.querySelector(s);
+const qsa = s => [...document.querySelectorAll(s)];
+const fmt = v => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+document.getElementById('year').textContent = new Date().getFullYear();
+
+const readLS = (k,d)=> JSON.parse(localStorage.getItem(k) ?? d);
+const writeLS = (k,v)=> localStorage.setItem(k, JSON.stringify(v));
+
+const favs = new Set(readLS('favs','[]'));
+const cart = ()=> readLS('cart','[]');
+const saveCart = x => writeLS('cart',x);
+
+function updateBadges(){
+  qs('#favCount').textContent = favs.size;
+  const items = cart();
+  const totalCount = items.reduce((a,b)=>a+b.qtd,0);
+  qs('#cartCount').textContent = totalCount;
+}
+
+/* ===========================
+   ICONES (SVG)
+=========================== */
+const Heart = (filled=false)=>`
+<svg class="heart" viewBox="0 0 24 24" fill="${filled?'#ff4d6d':'none'}" stroke="${filled?'#ff4d6d':'currentColor'}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/>
+</svg>`;
+const Cart = ()=>`
+<svg class="cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle>
+  <path d="M1 1h4l2.68 12.39a2 2 0 0 0 2 1.61h7.72a2 2 0 0 0 2-1.61L23 6H6"/>
+</svg>`;
+
+/* ===========================
+   CATÁLOGO
+=========================== */
+const cards = qs('#cards');
+
+function cubeSVG(){return `<svg class="cube-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7l9 5 9-5-9-5Z"/><path d="M3 17l9 5 9-5"/><path d="M3 7v10M21 7v10"/></svg>`}
+
+function renderCatalog(){
+  const q = qs('#q').value.trim().toLowerCase();
+  const cat = qs('#categoria').value, cor = qs('#cor').value, mat = qs('#material').value;
+  cards.innerHTML = '';
+  CATALOG.filter(p=>{
+    const qok = !q || (p.nome + ' ' + p.sku).toLowerCase().includes(q);
+    const cok = !cat || p.categoria===cat;
+    const rok = !cor || p.cor===cor;
+    const mok = !mat || p.material===mat;
+    return qok && cok && rok && mok;
+  }).forEach((p, idx)=>{
+    const isFav = favs.has(p.id);
+    const eager = idx < 4 ? 'eager' : 'lazy'; // leve no mobile
+    const el = document.createElement('article'); el.className='card';
+    el.innerHTML = `
+      <div class="media">
+        <model-viewer
+          src="${p.urlGLB}" alt="${p.nome}"
+          camera-controls auto-rotate shadow-intensity="1"
+          loading="${eager}" reveal="auto" interaction-prompt="none">
+        </model-viewer>
+        <button class="cta-ar" data-mv="${p.id}" title="Abrir AR no celular">
+          ${cubeSVG()} <span>veja no seu espaço</span>
+        </button>
+      </div>
+      <div class="body">
+        <div class="row">
+          <strong>${p.nome}</strong>
+          <span class="pill">SKU ${p.sku}</span>
+        </div>
+        <div class="muted">Cor: ${p.cor} • Material: ${p.material} • Preço: ${fmt(p.preco)}</div>
+
+        <div class="row actions">
+          <div class="row">
+            <button class="fav-btn ${isFav?'active':''}" data-fav="${p.id}" aria-pressed="${isFav}" aria-label="Favoritar">
+              ${Heart(isFav)} <span>${isFav?'Favorito':'Favoritar'}</span>
+            </button>
+          </div>
+          <div class="row">
+            <button class="add-btn" data-cart="${p.id}" aria-label="Adicionar ao carrinho">
+              ${Cart()} <span>Adicionar ao carrinho</span>
+            </button>
+            <button class="btn sm ghost" data-details="${p.id}">Ver detalhes</button>
+          </div>
+        </div>
+      </div>`;
+    cards.appendChild(el);
+  });
+}
+['#q','#categoria','#cor','#material'].forEach(id=>qs(id).addEventListener('input',renderCatalog));
+renderCatalog();
+updateBadges();
+
+/* ===========================
+   AR DISPOSITIVO (abre direto no toque)
+=========================== */
+const mvOverlay = qs('#mvOverlay'), mv = qs('#mv'), mvTitle = qs('#mvTitle'), iosHint = qs('#iosHint');
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+function openMV(id, tryDirectAR=false){
+  const p = CATALOG.find(x=>x.id===id); if(!p) return;
+  mvTitle.textContent = 'AR (Dispositivo) — ' + p.nome;
+  mv.setAttribute('src', p.urlGLB);
+  iosHint.style.display = isIOS() ? 'inline-block' : 'none';
+
+  // Abre overlay (fallback)
+  mvOverlay.style.display = 'grid'; mvOverlay.setAttribute('aria-hidden','false');
+
+  // Tenta abrir AR imediatamente (melhor UX em mobile)
+  if (tryDirectAR && 'activateAR' in mv) {
+    // pequena espera para o model-viewer fixar o src
+    setTimeout(()=> mv.activateAR().catch(()=>{}), 0);
+  }
+}
+function closeMV(){ mvOverlay.style.display='none'; mvOverlay.setAttribute('aria-hidden','true'); }
+qs('#mvAR').onclick = ()=> mv.activateAR && mv.activateAR();
+qs('#mvReset').onclick = ()=> mv.resetTurntableRotation && mv.resetTurntableRotation();
+qs('#closeMV').onclick = closeMV;
+
+/* ===========================
+   DETALHES (FAQ)
+=========================== */
+const detOverlay = qs('#detailsOverlay');
+const detTitle = qs('#detTitle');
+const detMV = qs('#detMV');
+const detFaq = qs('#detFaq');
+const detSketch = qs('#detSketch');
+const detMarkerBtn = qs('#detMarkerBtn');
+let detCurrent=null;
+
+function buildFAQ(sections){
+  detFaq.innerHTML = '';
+  sections.forEach((s,i)=>{
+    const id = `faq-${i}-${Math.random().toString(36).slice(2,7)}`;
+    const item = document.createElement('div');
+    item.className = 'item';
+    item.innerHTML = `
+      <button class="head" aria-expanded="${i===0?'true':'false'}" aria-controls="${id}">
+        <span>${s.t}</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id="${id}" class="panel" role="region">${s.d}</div>
+    `;
+    detFaq.appendChild(item);
+    const head = item.querySelector('.head');
+    const panel = item.querySelector('.panel');
+    if (i===0){ item.classList.add('open'); panel.style.maxHeight = panel.scrollHeight + 'px'; }
+    head.addEventListener('click', ()=>{
+      const isOpen = item.classList.contains('open');
+      qsa('.faq .item').forEach(it=>{
+        it.classList.remove('open');
+        it.querySelector('.panel').style.maxHeight = '0px';
+        it.querySelector('.head').setAttribute('aria-expanded','false');
+      });
+      if(!isOpen){ item.classList.add('open'); panel.style.maxHeight = panel.scrollHeight + 'px'; head.setAttribute('aria-expanded','true'); }
+    });
+  });
+}
+
+function openDetails(id){
+  const p = CATALOG.find(x=>x.id===id); if(!p) return;
+  detCurrent = id;
+  detTitle.textContent = p.nome + ' — ' + p.sku;
+  detMV.setAttribute('src', p.urlGLB);
+  detSketch.style.display = p.urlSketchfab ? 'inline-flex' : 'none';
+  if (p.urlSketchfab) detSketch.href = p.urlSketchfab;
+  const secs = (DETAILS[id]||[]);
+  buildFAQ(secs.length?secs:[{t:"Especificações",d:"Em preparação."}]);
+  detOverlay.style.display='grid'; detOverlay.setAttribute('aria-hidden','false');
+}
+function closeDetails(){ detOverlay.style.display='none'; detOverlay.setAttribute('aria-hidden','true'); }
+qs('#closeDet').onclick = closeDetails;
+qs('#detAR').onclick = ()=> detCurrent && openMV(detCurrent, true);
+detMarkerBtn.onclick = ()=> detCurrent && openAR(detCurrent);
+
+/* ===========================
+   AR POR MARCADOR (Hiro/custom) + SNAPSHOT
+=========================== */
+const arOverlay=qs('#arOverlay'), arMount=qs('#arMount'), arTitle=qs('#arTitle'), arStatus=qs('#arStatus');
+const markerSelect=qs('#markerSelect'), pattFile=qs('#pattFile'), choosePatt=qs('#choosePatt'), snapshotBtn=qs('#snapshotBtn');
+let currentAR=null, customPattUrl=null;
+
+function injectScene(urlGLB){
+  const useCustom = markerSelect.value==='custom' && customPattUrl;
+  const markerTag = useCustom
+    ? `<a-marker id="marker" type="pattern" url="${customPattUrl}" emitevents="true">`
+    : `<a-marker id="marker" preset="hiro" emitevents="true">`;
+
+  arMount.innerHTML = `
+    <a-scene embedded renderer="antialias:true; precision: mediump" vr-mode-ui="enabled:false"
+             device-orientation-permission-ui="enabled:true"
+             arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled:false;">
+      ${markerTag}
+        <a-entity id="model" gltf-model="url(${urlGLB})" position="0 0 0" scale="0.3 0.3 0.3"
+          animation="property: position; to: 0 0.02 0; dir: alternate; dur: 900; loop: true; easing: easeInOutSine"></a-entity>
+      </a-marker>
+      <a-entity camera></a-entity>
+    </a-scene>`;
+  const marker = arMount.querySelector('#marker');
+  arStatus.className='badge warn'; arStatus.textContent='Detectando…';
+  marker.addEventListener('markerFound', ()=>{ arStatus.className='badge ok'; arStatus.textContent='Ancorado'; });
+  marker.addEventListener('markerLost',  ()=>{ arStatus.className='badge warn'; arStatus.textContent='Perdido'; });
+
+  // Controles
+  const modelEl = ()=> arMount.querySelector('#model');
+  qs('#rotL').onclick = ()=>{ const m=modelEl(); if(!m) return; const r=m.getAttribute('rotation'); m.setAttribute('rotation',{x:r.x,y:r.y-10,z:r.z}); };
+  qs('#rotR').onclick = ()=>{ const m=modelEl(); if(!m) return; const r=m.getAttribute('rotation'); m.setAttribute('rotation',{x:r.x,y:r.y+10,z:r.z}); };
+  qs('#scalePlus').onclick = ()=>{ const m=modelEl(); if(!m) return; const s=m.getAttribute('scale'); m.setAttribute('scale',{x:s.x*1.12,y:s.y*1.12,z:s.z*1.12}); };
+  qs('#scaleMinus').onclick = ()=>{ const m=modelEl(); if(!m) return; const s=m.getAttribute('scale'); m.setAttribute('scale',{x:s.x/1.12,y:s.y/1.12,z:s.z/1.12}); };
+}
+
+function openAR(id){
+  const p = CATALOG.find(x=>x.id===id); if(!p) return;
+  currentAR = id;
+  arTitle.textContent = 'AR (Marcador) — ' + p.nome;
+  arOverlay.style.display='grid'; arOverlay.setAttribute('aria-hidden','false');
+  injectScene(p.urlGLB);
+}
+function closeAR(){ arOverlay.style.display='none'; arOverlay.setAttribute('aria-hidden','true'); arMount.innerHTML=''; }
+qs('#closeAR').onclick = closeAR;
+
+markerSelect.addEventListener('change', ()=>{
+  const useCustom = markerSelect.value==='custom';
+  choosePatt.style.display = useCustom ? 'inline-flex' : 'none';
+  if(currentAR){
+    const p = CATALOG.find(x=>x.id===currentAR); injectScene(p.urlGLB);
+  }
+});
+choosePatt.onclick = ()=> pattFile.click();
+pattFile.onchange = e=>{
+  const f = e.target.files[0]; if(!f) return;
+  customPattUrl = URL.createObjectURL(f);
+  if(currentAR){
+    const p = CATALOG.find(x=>x.id===currentAR); injectScene(p.urlGLB);
+  }
+};
+
+// Snapshot (vídeo + WebGL) → PNG
+snapshotBtn.onclick = async ()=>{
+  try{
+    const scene = arMount.querySelector('a-scene');
+    if(!scene || !scene.renderer) throw new Error('Cena não pronta');
+    const video = arMount.querySelector('video');
+    const glCanvas = scene.renderer.domElement;
+    const w = video ? video.videoWidth || glCanvas.width : glCanvas.width;
+    const h = video ? video.videoHeight || glCanvas.height : glCanvas.height;
+    const out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    const ctx = out.getContext('2d');
+    if(video) ctx.drawImage(video, 0, 0, w, h);
+    ctx.drawImage(glCanvas, 0, 0, w, h);
+    const url = out.toDataURL('image/png');
+    const a = document.createElement('a'); a.href = url; a.download = 'snapshot-ar.png'; a.click();
+  }catch{ alert('Não foi possível capturar agora. Ative a câmera e tente de novo.'); }
+};
+
+/* ===========================
+   FAVORITOS (lista dedicada)
+=========================== */
+const favOverlay=qs('#favOverlay'), favList=qs('#favList');
+function renderFavs(){
+  favList.innerHTML = '';
+  if(!favs.size){ favList.innerHTML = '<p class="muted">Você ainda não favoritou itens.</p>'; return; }
+  [...favs].map(id=>CATALOG.find(x=>x.id===id)).forEach(p=>{
+    if(!p) return;
+    const row = document.createElement('div'); row.className='row-item';
+    row.innerHTML = `
+      <div>
+        <strong>${p.nome}</strong> <span class="pill">SKU ${p.sku}</span>
+        <div class="muted">Cor: ${p.cor} • Material: ${p.material} • Preço: ${fmt(p.preco)}</div>
+      </div>
+      <div class="row">
+        <button class="btn sm" data-mv="${p.id}" aria-label="Ver no seu espaço">🧊 AR</button>
+        <button class="btn sm" data-details="${p.id}">Detalhes</button>
+        <button class="btn sm" data-cart="${p.id}">Adicionar</button>
+        <button class="btn sm ghost" data-unfav="${p.id}">Remover</button>
+      </div>`;
+    favList.appendChild(row);
+  });
+}
+qs('#openFavs').onclick = ()=>{ renderFavs(); favOverlay.style.display='grid'; favOverlay.setAttribute('aria-hidden','false'); };
+qs('#closeFavs').onclick = ()=>{ favOverlay.style.display='none'; favOverlay.setAttribute('aria-hidden','true'); };
+
+/* ===========================
+   CARRINHO + CHECKOUT
+=========================== */
+const cartOverlay=qs('#cartOverlay'), cartList=qs('#cartList'), cartTotal=qs('#cartTotal'), cartCountText=qs('#cartCountText');
+const checkoutBtn=qs('#checkoutBtn'), checkoutForm=qs('#checkoutForm');
+
+function calcTotal(items){ return items.reduce((a,b)=> a + b.preco*b.qtd, 0); }
+
+function renderCart(){
+  const items = cart();
+  cartList.innerHTML = '';
+  if(!items.length){
+    cartList.innerHTML = '<p class="muted">Seu carrinho está vazio.</p>';
+  }else{
+    items.forEach(p=>{
+      const row = document.createElement('div'); row.className='row-item';
+      row.innerHTML = `
+        <div>
+          <strong>${p.nome}</strong> <span class="pill">SKU ${p.sku}</span>
+          <div class="muted">${fmt(p.preco)} • Subtotal: ${fmt(p.preco*p.qtd)}</div>
+        </div>
+        <div class="qty">
+          <button data-dec="${p.id}" aria-label="Diminuir quantidade">−</button>
+          <span aria-live="polite">${p.qtd}</span>
+          <button data-inc="${p.id}" aria-label="Aumentar quantidade">+</button>
+          <button class="btn sm ghost" data-remove="${p.id}" aria-label="Remover item">Remover</button>
+        </div>`;
+      cartList.appendChild(row);
+    });
+  }
+  const total = calcTotal(items);
+  cartTotal.textContent = fmt(total);
+  cartCountText.textContent = items.length ? `(${items.length} item(ns))` : '';
+  updateBadges();
+}
+
+qs('#openCart').onclick = ()=>{ renderCart(); checkoutForm.style.display='none'; cartOverlay.style.display='grid'; cartOverlay.setAttribute('aria-hidden','false'); };
+qs('#closeCart').onclick = ()=>{ cartOverlay.style.display='none'; cartOverlay.setAttribute('aria-hidden','true'); };
+
+cartList.addEventListener('click', e=>{
+  const t = e.target;
+  let items = cart();
+  if(t.dataset.inc){
+    const it = items.find(x=>x.id===t.dataset.inc); if(it) it.qtd++;
+  }
+  if(t.dataset.dec){
+    const it = items.find(x=>x.id===t.dataset.dec); if(it && it.qtd>1) it.qtd--;
+  }
+  if(t.dataset.remove){
+    items = items.filter(x=>x.id!==t.dataset.remove);
+  }
+  saveCart(items); renderCart();
+});
+
+checkoutBtn.onclick = ()=>{
+  if(!cart().length){ alert('Carrinho vazio.'); return; }
+  checkoutForm.style.display='grid';
+  checkoutForm.scrollIntoView({behavior:'smooth'});
+};
+checkoutForm.addEventListener('submit', e=>{
+  e.preventDefault();
+  const fd = new FormData(checkoutForm);
+  const nome = fd.get('nome'); const email=fd.get('email'); const end=fd.get('endereco');
+  const d = new Date();
+  const ymd = d.toISOString().slice(0,10).replace(/-/g,'');
+  const id = Math.floor(1000 + Math.random()*9000);
+  const pedido = `pedido-${ymd}-${id}`;
+  const total = fmt(calcTotal(cart()));
+  saveCart([]); renderCart();
+  alert(`Pedido confirmado!\n\nNúmero: ${pedido}\nCliente: ${nome}\nEmail: ${email}\nEndereço: ${end}\nTotal: ${total}\n\n(Checkout simulado)`);
+  cartOverlay.style.display='none';
+});
+
+/* ===========================
+   CRÉDITOS + LEIA-ME
+=========================== */
+const creditsOverlay=qs('#creditsOverlay'), creditsBody=qs('#creditsBody');
+function renderCredits(){
+  creditsBody.innerHTML = '';
+  CATALOG.forEach(p=>{
+    const line = document.createElement('div');
+    line.className='mono';
+    const link = p.urlSketchfab ? `<a href="${p.urlSketchfab}" target="_blank" rel="noopener noreferrer">${p.urlSketchfab}</a>` : '<em>Sem página</em>';
+    line.innerHTML = `${p.nome} — SKU ${p.sku}<br>GLB: <code>${p.urlGLB}</code><br>Sketchfab: ${link}<hr style="border:none;border-top:1px solid rgba(255,255,255,.08)">`;
+    creditsBody.appendChild(line);
+  });
+}
+function getReadme(){
+  const lines = [
+    'LEIA-ME — Créditos de Modelos 3D (Demo Educacional)\n',
+    'Este aplicativo usa modelos 3D hospedados localmente e/ou referenciados no Sketchfab.',
+    'Respeite as licenças de cada item conforme a página do autor no Sketchfab.\n'
+  ];
+  CATALOG.forEach((p,i)=>{
+    lines.push(`${i+1}. ${p.nome} (SKU ${p.sku})`);
+    lines.push(`   GLB: ${p.urlGLB}`);
+    lines.push(`   Sketchfab: ${p.urlSketchfab || '—'}`);
+  });
+  lines.push('\nGerado automaticamente pelo app.');
+  return lines.join('\n');
+}
+qs('#openCredits').onclick = ()=>{ renderCredits(); creditsOverlay.style.display='grid'; creditsOverlay.setAttribute('aria-hidden','false'); };
+qs('#closeCredits').onclick = ()=>{ creditsOverlay.style.display='none'; creditsOverlay.setAttribute('aria-hidden','true'); };
+qs('#downloadReadme').onclick = ()=>{
+  const blob = new Blob([getReadme()], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'LEIA-ME.txt'; a.click();
+  setTimeout(()=> URL.revokeObjectURL(url), 2000);
+};
+
+/* ===========================
+   INTERAÇÕES GERAIS
+=========================== */
+function addToCart(id){
+  const p = CATALOG.find(x=>x.id===id); if(!p) return;
+  const items = cart();
+  const i = items.findIndex(x=>x.id===p.id);
+  if(i>=0) items[i].qtd += 1;
+  else items.push({id:p.id, nome:p.nome, sku:p.sku, preco:p.preco, qtd:1});
+  saveCart(items);
+  updateBadges();
+  alert('Item adicionado: ' + p.nome);
+}
+function toggleFav(id){
+  const now = favs.has(id) ? (favs.delete(id), false) : (favs.add(id), true);
+  writeLS('favs',[...favs]);
+  // Atualiza apenas o botão clicado
+  const btn = document.querySelector(`.fav-btn[data-fav="${id}"]`);
+  if(btn){
+    btn.classList.toggle('active', now);
+    btn.setAttribute('aria-pressed', now);
+    btn.innerHTML = `${Heart(now)} <span>${now?'Favorito':'Favoritar'}</span>`;
+  }
+  updateBadges();
+}
+
+document.body.addEventListener('click', (e)=>{
+  const t = e.target.closest('button, a'); if(!t) return;
+  if (t.dataset?.mv) openMV(t.dataset.mv, true);
+  if (t.dataset?.details) openDetails(t.dataset.details);
+  if (t.dataset?.cart) addToCart(t.dataset.cart);
+  if (t.dataset?.fav) toggleFav(t.dataset.fav);
+});
+
+qs('#openCart').addEventListener('click', ()=>{ renderCart(); document.getElementById('checkoutForm').style.display='none'; qs('#cartOverlay').style.display='grid'; qs('#cartOverlay').setAttribute('aria-hidden','false'); });
+qs('#closeCart').addEventListener('click', ()=>{ qs('#cartOverlay').style.display='none'; qs('#cartOverlay').setAttribute('aria-hidden','true'); });
+
+qs('#openFavs').addEventListener('click', ()=>{ renderFavs(); qs('#favOverlay').style.display='grid'; qs('#favOverlay').setAttribute('aria-hidden','false'); });
+qs('#closeFavs').addEventListener('click', ()=>{ qs('#favOverlay').style.display='none'; qs('#favOverlay').setAttribute('aria-hidden','true'); });
+
+window.openAR = openAR;
+</script>
+</body>
+</html>
